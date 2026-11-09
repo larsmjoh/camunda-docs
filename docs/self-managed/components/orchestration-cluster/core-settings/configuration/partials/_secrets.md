@@ -80,6 +80,22 @@ The store resolves and lists secrets with the following behavior:
 
 With several physical tenants, give each tenant its own prefix under `camunda.physical-tenants.<tenant-key>.secrets.stores.env.default.prefix`. When two tenants configure different prefixes and both set `<prefixA>API_KEY` and `<prefixB>API_KEY`, each tenant resolves `API_KEY` to only the value of its own prefixed variable.
 
+On Kubernetes, configure the prefix and pass each secret value from a Kubernetes Secret as a prefixed environment variable through the orchestration component's `env` list in your Helm values:
+
+```yaml
+orchestration:
+  env:
+    - name: CAMUNDA_SECRETS_STORES_ENV_DEFAULT_PREFIX
+      value: "APP_SECRET_"
+    - name: APP_SECRET_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: my-app-secrets
+          key: api-key
+```
+
+This resolves `camunda.secrets.API_KEY` to the `api-key` entry of the `my-app-secrets` Kubernetes Secret.
+
 The environment is the source of truth: the store resolves and lists but never writes or deletes secrets. Manage values through your environment, such as Kubernetes Secrets, systemd, or Docker, and restart to pick up a change.
 
 Like every store, resolved values are masked: a value never appears in logs, exporters, or Operate. See [secret resolution and job activation](/components/concepts/secret-resolution-and-job-activation.md) for how the broker path keeps resolved values out of records, runtime state, and logs.
