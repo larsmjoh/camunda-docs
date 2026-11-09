@@ -122,3 +122,18 @@ Only newly created dated indices use the new defaults. An existing index keeps t
   <li><span class="link-arrow">[Elasticsearch exporter configuration](/self-managed/components/orchestration-cluster/zeebe/exporters/elasticsearch-exporter.md#configuration)</span></li>
   <li><span class="link-arrow">[OpenSearch exporter configuration](/self-managed/components/orchestration-cluster/zeebe/exporters/opensearch-exporter.md#configuration)</span></li>
 </ul>
+
+#### Resolve secrets from environment variables
+
+<!-- https://github.com/camunda/camunda/issues/67203, https://github.com/camunda/camunda/issues/67220, https://github.com/camunda/camunda/issues/67221 -->
+
+<div class="release"><span class="badge badge--long" title="This feature affects Self-Managed">Self-Managed</span><span class="badge badge--medium" title="This feature affects Orchestration Cluster">Orchestration Cluster</span></div>
+
+Centralized secret resolution adds an environment variable store that resolves `camunda.secrets.<name>` references from environment variables carrying a mandatory prefix. Use it for local, CI, and lightweight setups, and for Helm installations that pass Kubernetes Secrets in as environment variables, without running an external vault.
+
+The store reads the environment once at startup, so changing a value requires a restart. A missing, malformed, or reserved prefix such as `CAMUNDA_` or `ZEEBE_` refuses startup with a clear message.
+
+<ul>
+  <li><span class="link-arrow">[Environment variable store configuration](/self-managed/components/orchestration-cluster/core-settings/configuration/properties.md#environment-variable-store)</span></li>
+  <li><span class="link-arrow">[Secret resolution](/components/concepts/secret-resolution.md)</span></li>
+</ul>

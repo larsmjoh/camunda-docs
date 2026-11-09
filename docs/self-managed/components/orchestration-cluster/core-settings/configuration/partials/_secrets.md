@@ -40,6 +40,50 @@ The default path below only takes effect once a file store is declared somewhere
   </TabItem>
 </Tabs>
 
+### Environment variable store
+
+The environment variable store resolves `camunda.secrets.<name>` references from environment variables that carry a mandatory prefix. Use it for local, CI, and lightweight setups, and for Helm installations that pass Kubernetes Secrets in as environment variables, so you get centralized secret resolution without running an external vault. It is Self-Managed only.
+
+The store reads the node's environment once at startup and keeps only the prefixed variables, with the prefix stripped from each name. Changing a value requires a restart, because a running JVM cannot see later changes to its environment.
+
+<Tabs>
+  <TabItem value="secrets-env-yaml" label="Application properties">
+
+| Property                                 | Description                                                                                                                                                                                                                                                                                                        | Default value | Overridable per Physical Tenant |
+| :--------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------ | :------------------------------ |
+| `camunda.secrets.stores.env.<id>.prefix` | Prefix every secret variable carries: the secret `name` is read from the variable `<prefix><name>`. Mandatory. It must start with a letter, contain only letters, digits, and underscores, and end with an underscore (for example, `APP_SECRET_`). Startup is refused when it is missing, malformed, or reserved. | `-`           | Yes                             |
+
+  </TabItem>
+  <TabItem value="secrets-env-env" label="Environment variables">
+
+| Property                                 | Description                                                                                                                                                                                                                                                                                                        | Default value | Overridable per Physical Tenant |
+| :--------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------ | :------------------------------ |
+| `CAMUNDA_SECRETS_STORES_ENV_<id>_PREFIX` | Prefix every secret variable carries: the secret `name` is read from the variable `<prefix><name>`. Mandatory. It must start with a letter, contain only letters, digits, and underscores, and end with an underscore (for example, `APP_SECRET_`). Startup is refused when it is missing, malformed, or reserved. | `-`           | Yes                             |
+
+  </TabItem>
+</Tabs>
+
+Dedicate a prefix to secrets rather than reuse one the platform already reads. Because the store keeps only the prefixed variables and strips the prefix from each name, it never holds a platform variable such as `CAMUNDA_*` or `AWS_*`, and a name outside the prefix cannot resolve.
+
+The trailing underscore bounds the prefix to whole name segments, so `SECRET_` does not also match `SECRETARY_*`, and a prefix cut short of a reserved one, such as `CAMUNDA` or `C`, is rejected as malformed.
+
+Startup is refused, with a message naming the setting, when the prefix starts, ignoring case, with a prefix reserved for the platform's own settings and credentials. The reserved prefixes are `CAMUNDA_`, `ZEEBE_`, `OPERATE_`, `TASKLIST_`, `OPTIMIZE_`, `IDENTITY_`, `ELASTICSEARCH_`, `OPENSEARCH_`, `KEYCLOAK_`, `SPRING_`, `SERVER_`, `MANAGEMENT_`, `LOGGING_`, `JAVA_`, `JDK_`, `AWS_`, `AZURE_`, `GOOGLE_`, and `KUBERNETES_`.
+
+The store resolves and lists secrets with the following behavior:
+
+- **Exact name matching**: a reference resolves only to a variable whose name matches exactly, case included, on every operating system. For example, with the prefix `APP_SECRET_`, `camunda.secrets.API_KEY` resolves `APP_SECRET_API_KEY`, but `APP_SECRET_api_key` does not resolve `API_KEY`.
+- **Empty values are not found**: a prefixed variable set to an empty string is treated as not found, not as an empty secret.
+- **Reference charset**: a secret name must match `[\p{Alnum}_-]+`. A name containing a period (`.`), such as `tls.crt`, is an invalid reference and returns no value, even through a backtick-escaped reference in a job. This differs from the file store, which can serve such a name.
+- **Dashed names**: a dashed name resolves when it is backtick-escaped in the FEEL reference. With the prefix `APP_SECRET_`, `` camunda.secrets.`db-password` `` resolves `APP_SECRET_db-password`.
+- **Listing**: a secret list returns the names of the prefixed variables that have a non-empty value, sorted, without the prefix and without values.
+- **Values pass through unchanged**: multi-line values, such as a PEM certificate, and JSON values are resolved exactly as set.
+
+With several physical tenants, give each tenant its own prefix under `camunda.physical-tenants.<tenant-key>.secrets.stores.env.default.prefix`. When two tenants configure different prefixes and both set `<prefixA>API_KEY` and `<prefixB>API_KEY`, each tenant resolves `API_KEY` to only the value of its own prefixed variable.
+
+The environment is the source of truth: the store resolves and lists but never writes or deletes secrets. Manage values through your environment, such as Kubernetes Secrets, systemd, or Docker, and restart to pick up a change.
+
+Like every store, resolved values are masked: a value never appears in logs, exporters, or Operate. See [secret resolution and job activation](/components/concepts/secret-resolution-and-job-activation.md) for how the broker path keeps resolved values out of records, runtime state, and logs.
+
 ### AWS Secrets Manager store
 
 Configuration for a secret store backed by AWS Secrets Manager. Authentication is always identity-based, via the AWS SDK's default credentials provider chain. No static credentials are accepted at all. Secrets are always read at the `AWSCURRENT` version stage; pinning to a different stage is not supported.
