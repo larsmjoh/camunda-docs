@@ -131,9 +131,12 @@ Only newly created dated indices use the new defaults. An existing index keeps t
 
 Centralized secret resolution adds an environment variable store that resolves `camunda.secrets.<name>` references from environment variables carrying a mandatory prefix. Use it for local, CI, and lightweight setups, and for Helm installations that pass Kubernetes Secrets in as environment variables, without running an external vault.
 
-The store reads the environment once at startup, so changing a value requires a restart. A missing, malformed, or reserved prefix such as `CAMUNDA_` or `ZEEBE_` refuses startup with a clear message.
+The store reads the environment once at startup, so changing a value requires a restart. A missing, malformed, or reserved prefix such as `CAMUNDA_` or `ZEEBE_` refuses startup with a message naming the setting.
+
+Camunda 8 Run supports the store through `C8RUN_SECRETS_MODE=env` and `C8RUN_SECRETS_ENV_PREFIX`, with a separate variable prefix for each Physical Tenant.
 
 <ul>
   <li><span class="link-arrow">[Environment variable store configuration](/self-managed/components/orchestration-cluster/core-settings/configuration/properties.md#environment-variable-store)</span></li>
+  <li><span class="link-arrow">[Use secrets from environment variables in Camunda 8 Run](/self-managed/quickstart/developer-quickstart/c8run/configuration.md#use-secrets-from-environment-variables)</span></li>
   <li><span class="link-arrow">[Secret resolution](/components/concepts/secret-resolution.md)</span></li>
 </ul>

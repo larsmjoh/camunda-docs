@@ -42,9 +42,11 @@ The default path below only takes effect once a file store is declared somewhere
 
 ### Environment variable store
 
-The environment variable store resolves `camunda.secrets.<name>` references from environment variables that carry a mandatory prefix. Use it for local, CI, and lightweight setups, and for Helm installations that pass Kubernetes Secrets in as environment variables, so you get centralized secret resolution without running an external vault. It's Self-Managed only.
+The environment variable store resolves `camunda.secrets.<name>` references from environment variables that carry a mandatory prefix. Use it for local, CI, and lightweight setups, and for Helm installations that pass Kubernetes Secrets in as environment variables, so you get centralized secret resolution without running an external vault. It's Self-Managed only: Camunda refuses to start if the store is configured on a SaaS cluster.
 
-The store reads the node's environment once at startup and keeps only the prefixed variables, with the prefix stripped from each name. Changing a value requires a restart, because a running JVM cannot see later changes to its environment.
+The store reads the node's environment once at startup and keeps only the prefixed variables, with the prefix stripped from each name. Changing a value requires a restart, because a running JVM cannot see later changes to its environment, and Kubernetes doesn't update a running container's environment either.
+
+Because the store already holds every value in memory, Camunda doesn't put a [secret cache](#secret-cache) in front of it. `camunda.secrets.cache.ttl` and `camunda.secrets.cache.max-size` have no effect on this store.
 
 <Tabs>
   <TabItem value="secrets-env-yaml" label="Application properties">
@@ -77,10 +79,12 @@ The store resolves and lists secrets with the following behavior:
 | Empty values aren't found  | A prefixed variable set to an empty string is treated as not found, not as an empty secret.                                                                                                                                                                            |
 | Reference charset          | A secret name must match `[\p{Alnum}_-]+`. A name containing a period (`.`), such as `tls.crt`, is an invalid reference and returns no value, even through a backtick-escaped reference in a job. The file store, by contrast, can serve such a name.                  |
 | Dashed names               | A dashed name resolves when it's backtick-escaped in the FEEL reference. With the prefix `APP_SECRET_`, `` camunda.secrets.`db-password` `` resolves `APP_SECRET_db-password`.                                                                                         |
-| Listing                    | A secret list returns the names of the prefixed variables that have a non-empty value, sorted, without the prefix and without values.                                                                                                                                  |
-| Values pass through as set | Multi-line values, such as a PEM certificate, and JSON values resolve exactly as set.                                                                                                                                                                                  |
+| Listing                    | A secret list returns the names of the prefixed variables that have a non-empty value, sorted, without the prefix and without values. `/v2/secrets` omits names outside the reference charset or longer than 240 characters.                                           |
+| Values pass through as set | Multi-line values, such as a PEM certificate, and JSON values resolve exactly as set, including any trailing newline. The file store, by contrast, strips a single trailing newline from each file.                                                                    |
 
 With several physical tenants, give each tenant its own prefix under `camunda.physical-tenants.<tenant-key>.secrets.stores.env.default.prefix`. When two tenants configure different prefixes and both set `<prefixA>API_KEY` and `<prefixB>API_KEY`, each tenant resolves `API_KEY` to only the value of its own prefixed variable.
+
+Camunda refuses to start if two physical tenants configure overlapping prefixes, that is, if one tenant's prefix starts with another's. With `SECRET_` for one tenant and `SECRET_PT1_` for another, the first tenant would otherwise resolve the second tenant's `SECRET_PT1_API_KEY` as its own secret `PT1_API_KEY`. A tenant that inherits the root store shares the `default` tenant's prefix, so override the prefix for every additional tenant.
 
 On Kubernetes, configure the prefix and pass each secret value from a Kubernetes Secret as a prefixed environment variable through the orchestration component's `env` list in your Helm values:
 
@@ -180,7 +184,7 @@ In container-secret mode, the named secret's value must be a flat JSON object ma
 
 ### Secret cache
 
-One cache is created per configured store.
+One cache is created per configured store. The [environment variable store](#environment-variable-store) is the exception: it holds its values in memory, so these settings don't apply to it.
 
 <Tabs>
   <TabItem value="secrets-cache-yaml" label="Application properties">
@@ -203,7 +207,7 @@ One cache is created per configured store.
 
 ### Concurrency
 
-Applies only to a store whose cost scales with the number of names requested (for example, AWS Secrets Manager without `batch-enabled`, which issues one `GetSecretValue` call per name). A store that resolves a whole request in a single call, such as the file store or a store using `container-secret-id`, is unaffected.
+Applies only to a store whose cost scales with the number of names requested (for example, AWS Secrets Manager without `batch-enabled`, which issues one `GetSecretValue` call per name). A store that resolves a whole request in a single call, such as the file store, the environment variable store, or a store using `container-secret-id`, is unaffected.
 
 <Tabs>
   <TabItem value="secrets-concurrency-yaml" label="Application properties">
