@@ -86,7 +86,71 @@ With several physical tenants, give each tenant its own prefix under `camunda.ph
 
 Camunda refuses to start if two physical tenants configure overlapping prefixes, that is, if one tenant's prefix starts with another's. With `SECRET_` for one tenant and `SECRET_PT1_` for another, the first tenant would otherwise resolve the second tenant's `SECRET_PT1_API_KEY` as its own secret `PT1_API_KEY`. A tenant that inherits the root store shares the `default` tenant's prefix, so override the prefix for every additional tenant.
 
-On Kubernetes, configure the prefix and pass each secret value from a Kubernetes Secret as a prefixed environment variable through the orchestration component's `env` list in your Helm values:
+The environment is the source of truth: the store resolves and lists but never writes or deletes secrets. Manage values through your environment, such as Kubernetes Secrets, systemd, or Docker, and restart to pick up a change.
+
+Like every store, the environment variable store keeps resolved values out of what Camunda stores: records, runtime state, exported records, and broker logs hold only the `camunda.secrets.<name>` placeholder, which is also what Operate shows. See [secret resolution and job activation](/components/concepts/secret-resolution-and-job-activation.md) for how the broker path keeps resolved values out of these locations.
+
+A job worker receives resolved values in plaintext. If the worker logs its input variables, the values appear in the worker's logs. If the worker writes a value back into process variables, for example through job completion variables or a connector result, the value appears in runtime state, exported records, and Operate. Learn more about [what a job worker receives](/components/concepts/secret-resolution-and-job-activation.md#understand-what-a-job-worker-receives).
+
+#### Configure the environment variable store
+
+The broker resolves secret references, so set the prefix and the prefixed secret variables on the Orchestration Cluster process. In a multi-node cluster, set the same variables on every node. Each example below resolves `camunda.secrets.API_KEY` to the value of `APP_SECRET_API_KEY`.
+
+<Tabs groupId="secrets-env-deployment">
+  <TabItem value="secrets-env-jar" label="Manual (JAR)" default>
+
+Declare the store in your `application.yaml`:
+
+```yaml
+camunda:
+  secrets:
+    stores:
+      env:
+        default:
+          prefix: APP_SECRET_
+```
+
+Export the secret variables in the shell, service unit, or process manager that starts Camunda, then start it:
+
+```bash
+export APP_SECRET_API_KEY="<api-key>"
+./bin/camunda
+```
+
+To configure the store without editing `application.yaml`, also export `CAMUNDA_SECRETS_STORES_ENV_DEFAULT_PREFIX=APP_SECRET_`.
+
+  </TabItem>
+  <TabItem value="secrets-env-docker" label="Docker">
+
+```bash
+docker run \
+  -e CAMUNDA_SECRETS_STORES_ENV_DEFAULT_PREFIX=APP_SECRET_ \
+  -e APP_SECRET_API_KEY="<api-key>" \
+  camunda/camunda:<tag>
+```
+
+To keep values out of your shell history, pass them with `--env-file` instead.
+
+  </TabItem>
+  <TabItem value="secrets-env-compose" label="Docker Compose">
+
+Add the variables to the Orchestration Cluster service:
+
+```yaml
+services:
+  orchestration:
+    image: camunda/camunda:<tag>
+    environment:
+      CAMUNDA_SECRETS_STORES_ENV_DEFAULT_PREFIX: APP_SECRET_
+      APP_SECRET_API_KEY: ${APP_SECRET_API_KEY}
+```
+
+Docker Compose substitutes `${APP_SECRET_API_KEY}` from your shell or from a `.env` file next to the Compose file, so the value stays out of the Compose file itself.
+
+  </TabItem>
+  <TabItem value="secrets-env-helm" label="Helm">
+
+Pass each value from a Kubernetes Secret as a prefixed environment variable through the `orchestration.env` list:
 
 ```yaml
 orchestration:
@@ -102,11 +166,21 @@ orchestration:
 
 This resolves `camunda.secrets.API_KEY` to the `api-key` entry of the `my-app-secrets` Kubernetes Secret.
 
-The environment is the source of truth: the store resolves and lists but never writes or deletes secrets. Manage values through your environment, such as Kubernetes Secrets, systemd, or Docker, and restart to pick up a change.
+The chart's `orchestration.secretStore` key configures only the file, AWS, and GCP stores. Don't also configure a store there, because each physical tenant supports exactly one store.
 
-Like every store, the environment variable store keeps resolved values out of what Camunda stores: records, runtime state, exported records, and broker logs hold only the `camunda.secrets.<name>` placeholder, which is also what Operate shows. See [secret resolution and job activation](/components/concepts/secret-resolution-and-job-activation.md) for how the broker path keeps resolved values out of these locations.
+  </TabItem>
+</Tabs>
 
-A job worker receives resolved values in plaintext. If the worker logs its input variables, the values appear in the worker's logs. If the worker writes a value back into process variables, for example through job completion variables or a connector result, the value appears in runtime state, exported records, and Operate. Learn more about [what a job worker receives](/components/concepts/secret-resolution-and-job-activation.md#understand-what-a-job-worker-receives).
+With physical tenants, set each tenant's prefix with its environment variable form, `CAMUNDA_PHYSICALTENANTS_<TENANT_KEY>_SECRETS_STORES_ENV_DEFAULT_PREFIX`, where `<TENANT_KEY>` is the tenant key in uppercase:
+
+```bash
+CAMUNDA_SECRETS_STORES_ENV_DEFAULT_PREFIX=APP_SECRET_DEFAULT_
+CAMUNDA_PHYSICALTENANTS_RISKPROD_SECRETS_STORES_ENV_DEFAULT_PREFIX=APP_SECRET_RISKPROD_
+APP_SECRET_DEFAULT_API_KEY=<default-tenant-api-key>
+APP_SECRET_RISKPROD_API_KEY=<riskprod-api-key>
+```
+
+To check which secrets the store loaded, call [`POST /v2/secrets/list`](/apis-tools/orchestration-cluster-api-rest/orchestration-cluster-api-rest-secrets.md#list-secrets). It returns the secret names without the prefix and never returns values.
 
 ### AWS Secrets Manager store
 
